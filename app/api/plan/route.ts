@@ -40,7 +40,7 @@ function extractJson(text: string): string {
 
 type ModelResult = { text: string; finishReason?: string };
 
-async function generateWithRetry(args: { systemInstruction: string; contents: string }): Promise<ModelResult> {
+async function generateWithRetry(args: { systemInstruction: string; contents: string; deadline: number }): Promise<ModelResult> {
   const models = [
     process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite",
     process.env.GEMINI_FALLBACK_MODEL,
@@ -48,7 +48,9 @@ async function generateWithRetry(args: { systemInstruction: string; contents: st
 
   let lastError: any;
   for (const model of models) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // Stop retrying when the time budget is spent, so the request ends before the host kills it.
+      if (Date.now() > args.deadline) throw lastError ?? Object.assign(new Error("Out of time"), { status: 503 });
       try {
         const res = await ai.models.generateContent({
           model,
@@ -61,7 +63,7 @@ async function generateWithRetry(args: { systemInstruction: string; contents: st
         lastError = e;
         if (!isTransient(e)) throw e;
         console.warn(`[plan] ${model} attempt ${attempt + 1} failed (transient), retrying`);
-        await sleep(1500 * (attempt + 1));
+        await sleep(1000);
       }
     }
   }
@@ -146,6 +148,8 @@ export async function POST(req: Request) {
   const parsed = PlanInput.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const input = parsed.data;
+  const started = Date.now();
+  const deadline = started + 48_000; // the route limit is 60 s
 
   let places: Place[];
   try {
@@ -192,9 +196,10 @@ export async function POST(req: Request) {
   let feedback: string[] | undefined;
 
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (best && Date.now() - started > 35_000) break; // good enough; don't risk a timeout
     let result: ModelResult;
     try {
-      result = await generateWithRetry({ systemInstruction, contents: makeContents(feedback) });
+      result = await generateWithRetry({ systemInstruction, contents: makeContents(feedback), deadline });
     } catch (e: any) {
       if (best) break; // already have something usable
       const busy = isTransient(e);

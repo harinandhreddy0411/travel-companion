@@ -87,7 +87,14 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ destination: destination.trim(), days, budget, interests: interests.map((i) => i.toLowerCase()) }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // The host (not our code) answered with plain text, usually because the request timed out.
+        throw new Error("The planner took too long or crashed. Try again, or choose fewer days.");
+      }
       if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "The form has an invalid value. Check the destination and try again.");
       open(data);
     } catch (err: any) {
