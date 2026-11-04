@@ -6,7 +6,6 @@ The interesting part is where the rules live. A language model on its own invent
 
 **Live demo:** https://travel-companion-seven-gold.vercel.app (a plan takes about 20 to 45 seconds, and the free model tier is sometimes busy)
 
-![Home screen](docs/images/home.png)
 ![A finished trip](docs/images/trip.png)
 
 ## Features
